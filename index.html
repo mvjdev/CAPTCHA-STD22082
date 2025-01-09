@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script
+      type="text/javascript"
+      src="https://09bd26e5e726.eu-west-3.captcha-sdk.awswaf.com/09bd26e5e726/jsapi.js"
+      defer
+    ></script>
+    <script src="index.js" defer></script>
+    <title>Générateur de Séquence Forbidden</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background-color: #f0f0f0;
+      }
+      .container {
+        background-color: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        max-width: 600px;
+        width: 100%;
+      }
+      h1 {
+        color: #333;
+      }
+      #output {
+        margin-top: 20px;
+        font-family: monospace;
+        white-space: pre-wrap;
+        max-height: 400px;
+        overflow-y: auto;
+        width: 100%;
+        background-color: #f8f8f8;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+      }
+      #numberForm,
+      #my-captcha-container {
+        margin-bottom: 20px;
+      }
+      .hidden {
+        display: none;
+      }
+      input[type="number"] {
+        padding: 5px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+      }
+      button {
+        padding: 5px 10px;
+        background-color: #007bff;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button:hover {
+        background-color: #0056b3;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Générateur de Séquence Forbidden</h1>
+
+      <form id="numberForm">
+        <label for="number">Entrez un nombre (1 à 1000) : </label>
+        <input
+          type="number"
+          id="number"
+          name="number"
+          min="1"
+          max="1000"
+          required
+        />
+        <button type="submit">Générer</button>
+      </form>
+
+      <div id="my-captcha-container" class="hidden"></div>
+
+      <div id="output"></div>
+    </div>
+
+    <script>
+      let captchaResolved = false;
+      let currentIndex = 1;
+      let totalRequests = 0;
+      let captchaToken = "";
+      let N = 0;
+
+      function showMyCaptcha() {
+        const container = document.querySelector("#my-captcha-container");
+        container.classList.remove("hidden");
+
+        AwsWafCaptcha.renderCaptcha(container, {
+          apiKey: window.WAF_API_KEY,
+          onSuccess: captchaExampleSuccessFunction,
+          onError: captchaExampleErrorFunction,
+        });
+      }
+
+      function captchaExampleSuccessFunction(wafToken) {
+        captchaResolved = true;
+        captchaToken = wafToken;
+        document.getElementById("my-captcha-container").classList.add("hidden");
+        continueSequence();
+      }
+
+      function captchaExampleErrorFunction(error) {
+        console.error("Erreur de captcha:", error);
+        alert("La vérification du captcha a échoué. Veuillez réessayer.");
+        showMyCaptcha();
+      }
+
+      async function makeRequest(index) {
+        try {
+          const response = await fetch(
+            "https://api.prod.jcloudify.com/whoami",
+            {
+              method: "GET",
+              headers: {
+                "X-Amzn-Waf-Captcha-Token": captchaToken,
+              },
+            }
+          );
+
+          if (response.status === 403) {
+            return `${index}. Forbidden`;
+          } else if (response.status === 405) {
+            captchaResolved = false;
+            showMyCaptcha();
+            return `${index}. Captcha requis`;
+          } else {
+            return `${index}. Statut inattendu: ${response.status}`;
+          }
+        } catch (error) {
+          console.error("Erreur lors de l'appel à l'API:", error);
+          return `${index}. Erreur: ${error.message}`;
+        }
+      }
+
+      async function continueSequence() {
+        const outputDiv = document.getElementById("output");
+
+        while (currentIndex <= N && totalRequests < N) {
+          const result = await makeRequest(currentIndex);
+          outputDiv.textContent += result + "\n";
+          totalRequests++;
+
+          if (result.includes("Captcha requis")) {
+            break;
+          }
+
+          currentIndex++;
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+
+        if (totalRequests >= N) {
+          document.getElementById("numberForm").classList.remove("hidden");
+        }
+      }
+
+      document
+        .getElementById("numberForm")
+        .addEventListener("submit", async function (event) {
+          event.preventDefault();
+
+          const numberInput = document.getElementById("number");
+          N = parseInt(numberInput.value);
+
+          if (N < 1 || N > 1000) {
+            alert("Veuillez entrer un nombre valide entre 1 et 1000.");
+            return;
+          }
+
+          const outputDiv = document.getElementById("output");
+          outputDiv.textContent = "";
+
+          this.classList.add("hidden");
+          totalRequests = 0;
+          currentIndex = 1;
+          captchaResolved = false;
+          captchaToken = "";
+
+          continueSequence();
+        });
+    </script>
+  </body>
+</html>
